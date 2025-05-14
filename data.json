@@ -1,0 +1,7 @@
+{
+  "outputPathTemplate": "Summary of Week %WEEK_NUMBER%.md",
+  "outputFolder": "Weekly Summaries/",
+  "ollamaApiUrl": "http://localhost:11434",
+  "model": "gemma3:12b-it-qat",
+  "outputPath": "suWeekly Summary.md"
+}
