@@ -11,6 +11,7 @@ interface WeeklySummarizerSettings {
   outputFolder: string;
   ollamaApiUrl: string;
   model: string; // Add a setting for the model
+  maxTokens: number; // Add a setting for maximum tokens
 }
 
 const DEFAULT_SETTINGS: WeeklySummarizerSettings = {
@@ -18,6 +19,7 @@ const DEFAULT_SETTINGS: WeeklySummarizerSettings = {
   outputFolder: '/',
   ollamaApiUrl: 'http://localhost:11434',
   model: 'mistral:latest', // Default model
+  maxTokens: 500, // Default maximum tokens
 };
 
 export default class WeeklySummarizer extends Plugin {
@@ -88,10 +90,12 @@ export default class WeeklySummarizer extends Plugin {
   }
 
   async fetchOllamaSummary(text: string): Promise<string> {
+    const prompt = `Please summarize the following content into exactly two paragraphs:\n\n${text}`;
+
     try {
       const response = await this.ollamaClient.chat({
         model: this.settings.model,  // Use the model from settings
-        messages: [{ role: 'user', content: text }],
+        messages: [{ role: 'user', content: prompt }],
         stream: false, // Assuming no streaming for now
       });
 
@@ -178,5 +182,18 @@ class WeeklySummarizerSettingTab extends PluginSettingTab {
             await this.plugin.saveSettings();
           })
       );
+
+    new Setting(containerEl)
+      .setName('Maximum Tokens')
+      .setDesc('Maximum number of tokens to use for each summary request.')
+      .addText(text =>
+        text
+          .setPlaceholder('500')
+          .setValue(String(this.plugin.settings.maxTokens))
+          .onChange(async (value) => {
+            this.plugin.settings.maxTokens = parseInt(value, 10);
+            await this.plugin.saveSettings();
+          })
+    );
   }
 }

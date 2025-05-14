@@ -1222,7 +1222,8 @@ const DEFAULT_SETTINGS = {
     outputPathTemplate: 'Summary of Week %WEEK_NUMBER%.md',
     outputFolder: '/',
     ollamaApiUrl: 'http://localhost:11434',
-    model: 'mistral:latest', // Default model
+    model: 'mistral:latest',
+    maxTokens: 500, // Default maximum tokens
 };
 class WeeklySummarizer extends obsidian.Plugin {
     onload() {
@@ -1283,10 +1284,11 @@ class WeeklySummarizer extends obsidian.Plugin {
     fetchOllamaSummary(text) {
         var _a;
         return __awaiter(this, void 0, void 0, function* () {
+            const prompt = `Please summarize the following content into exactly two paragraphs:\n\n${text}`;
             try {
                 const response = yield this.ollamaClient.chat({
                     model: this.settings.model,
-                    messages: [{ role: 'user', content: text }],
+                    messages: [{ role: 'user', content: prompt }],
                     stream: false, // Assuming no streaming for now
                 });
                 return ((_a = response.message) === null || _a === void 0 ? void 0 : _a.content) || 'No summary generated.';
@@ -1351,12 +1353,22 @@ class WeeklySummarizerSettingTab extends obsidian.PluginSettingTab {
         })));
         new obsidian.Setting(containerEl)
             .setName('Ollama Model')
-            .setDesc('Model to be used for summarization (e.g., mistral:latest)')
+            .setDesc('Model to be used for summarization (e.g., mistral:latest). You must manually pull the model if doess not already exists.')
             .addText(text => text
             .setPlaceholder('mistral:latest')
             .setValue(this.plugin.settings.model)
             .onChange((value) => __awaiter(this, void 0, void 0, function* () {
             this.plugin.settings.model = value;
+            yield this.plugin.saveSettings();
+        })));
+        new obsidian.Setting(containerEl)
+            .setName('Maximum Tokens')
+            .setDesc('Maximum number of tokens to use for each summary request.')
+            .addText(text => text
+            .setPlaceholder('500')
+            .setValue(String(this.plugin.settings.maxTokens))
+            .onChange((value) => __awaiter(this, void 0, void 0, function* () {
+            this.plugin.settings.maxTokens = parseInt(value, 10);
             yield this.plugin.saveSettings();
         })));
     }
