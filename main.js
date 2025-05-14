@@ -1270,7 +1270,7 @@ class WeeklySummarizer extends obsidian.Plugin {
                 }
             }
             // Now generate one summary for the combined content of all files
-            const summaryContent = yield this.fetchOllamaSummary(combinedContent);
+            const summaryContent = yield this.generateSummary(combinedContent);
             // Prepare the full summary
             const finalSummary = `# Summary of Week ${weekNumber}\n\n${summaryContent}`;
             try {
@@ -1278,6 +1278,24 @@ class WeeklySummarizer extends obsidian.Plugin {
             }
             catch (err) {
                 console.error(`Error writing summary: ${err}`);
+            }
+        });
+    }
+    generateSummary(text) {
+        return __awaiter(this, void 0, void 0, function* () {
+            const chunkSize = Math.floor(this.settings.maxTokens * 0.75); // Adjust the chunk size based on the token limit
+            const textChunks = this.chunkText(text, chunkSize);
+            let combinedSummary = '';
+            try {
+                for (const chunk of textChunks) {
+                    const summary = yield this.fetchOllamaSummary(chunk);
+                    combinedSummary += summary + '\n\n';
+                }
+                return `# Weekly Summary\n\n${combinedSummary}`;
+            }
+            catch (err) {
+                console.error(`Error generating summary: ${err}`);
+                return 'Error summarizing content.';
             }
         });
     }
@@ -1298,6 +1316,14 @@ class WeeklySummarizer extends obsidian.Plugin {
                 return 'Error summarizing content.';
             }
         });
+    }
+    // Helper function to split large text into smaller chunks
+    chunkText(text, chunkSize) {
+        const chunks = [];
+        for (let i = 0; i < text.length; i += chunkSize) {
+            chunks.push(text.substring(i, i + chunkSize));
+        }
+        return chunks;
     }
     loadSettings() {
         return __awaiter(this, void 0, void 0, function* () {
@@ -1353,7 +1379,7 @@ class WeeklySummarizerSettingTab extends obsidian.PluginSettingTab {
         })));
         new obsidian.Setting(containerEl)
             .setName('Ollama Model')
-            .setDesc('Model to be used for summarization (e.g., mistral:latest). You must manually pull the model if doess not already exists.')
+            .setDesc('Model to be used for summarization (e.g., mistral:latest). You must manually pull the model if it does not already exist.')
             .addText(text => text
             .setPlaceholder('mistral:latest')
             .setValue(this.plugin.settings.model)

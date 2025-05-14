@@ -77,7 +77,7 @@ export default class WeeklySummarizer extends Plugin {
     }
 
     // Now generate one summary for the combined content of all files
-    const summaryContent = await this.fetchOllamaSummary(combinedContent);
+    const summaryContent = await this.generateSummary(combinedContent);
 
     // Prepare the full summary
     const finalSummary = `# Summary of Week ${weekNumber}\n\n${summaryContent}`;
@@ -86,6 +86,24 @@ export default class WeeklySummarizer extends Plugin {
       await this.app.vault.create(outputPath, finalSummary);  // Create the summary file
     } catch (err) {
       console.error(`Error writing summary: ${err}`);
+    }
+  }
+
+  async generateSummary(text: string): Promise<string> {
+    const chunkSize = Math.floor(this.settings.maxTokens * 0.75); // Adjust the chunk size based on the token limit
+    const textChunks = this.chunkText(text, chunkSize);
+    let combinedSummary = '';
+
+    try {
+      for (const chunk of textChunks) {
+        const summary = await this.fetchOllamaSummary(chunk);
+        combinedSummary += summary + '\n\n';
+      }
+
+      return `# Weekly Summary\n\n${combinedSummary}`;
+    } catch (err) {
+      console.error(`Error generating summary: ${err}`);
+      return 'Error summarizing content.';
     }
   }
 
@@ -104,6 +122,15 @@ export default class WeeklySummarizer extends Plugin {
       console.error(`Error connecting to Ollama API: ${err}`);
       return 'Error summarizing content.';
     }
+  }
+
+  // Helper function to split large text into smaller chunks
+  chunkText(text: string, chunkSize: number): string[] {
+    const chunks = [];
+    for (let i = 0; i < text.length; i += chunkSize) {
+      chunks.push(text.substring(i, i + chunkSize));
+    }
+    return chunks;
   }
 
   async loadSettings() {
@@ -172,7 +199,7 @@ class WeeklySummarizerSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName('Ollama Model')
-      .setDesc('Model to be used for summarization (e.g., mistral:latest). You must manually pull the model if doess not already exists.')
+      .setDesc('Model to be used for summarization (e.g., mistral:latest). You must manually pull the model if it does not already exist.')
       .addText(text =>
         text
           .setPlaceholder('mistral:latest')
