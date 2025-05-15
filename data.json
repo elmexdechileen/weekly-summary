@@ -3,5 +3,6 @@
   "outputFolder": "Weekly Summaries/",
   "ollamaApiUrl": "http://localhost:11434",
   "model": "gemma3:12b-it-qat",
+  "maxTokens": 1000,
   "outputPath": "suWeekly Summary.md"
 }

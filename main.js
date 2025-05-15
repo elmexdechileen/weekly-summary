@@ -1223,14 +1223,14 @@ const DEFAULT_SETTINGS = {
     outputFolder: '/',
     ollamaApiUrl: 'http://localhost:11434',
     model: 'mistral:latest',
-    maxTokens: 500, // Default maximum tokens
+    maxTokens: 500,
 };
 class WeeklySummarizer extends obsidian.Plugin {
     onload() {
         return __awaiter(this, void 0, void 0, function* () {
             console.log('Loading Weekly Summarizer Plugin');
             yield this.loadSettings();
-            // Initialize Ollama client without baseUrl
+            // Initialize Ollama client
             this.ollamaClient = new Ollama();
             this.addCommand({
                 id: 'generate-weekly-summary',
@@ -1251,79 +1251,83 @@ class WeeklySummarizer extends obsidian.Plugin {
                 .replace('%WEEK_NUMBER%', `${weekNumber}`)
                 .replace('%YEAR%', `${year}`);
             const outputPath = `${this.settings.outputFolder}/${outputFileName}`;
-            // Check if the summary file already exists
+            // Check if summary file exists
             const existingFile = this.app.vault.getAbstractFileByPath(outputPath);
             if (existingFile instanceof obsidian.TFile) {
                 new obsidian.Notice(`Weekly summary for week ${weekNumber} already exists. No action taken.`);
-                return; // Exit the function if the file already exists
+                return;
             }
             const markdownFiles = this.app.vault.getMarkdownFiles();
-            // Combine all the content of the markdown files
-            let combinedContent = '';
+            // Step 1: Summarize each document individually (1-2 sentences)
+            const perDocSummaries = [];
             for (const file of markdownFiles) {
                 try {
                     const content = yield this.app.vault.read(file);
-                    combinedContent += content + '\n\n'; // Add each file's content to the combined content
+                    // Generate a short summary for this document
+                    const shortSummary = yield this.generateShortSummary(content);
+                    perDocSummaries.push({ content: shortSummary, filePath: file.path });
                 }
                 catch (err) {
                     console.error(`Error reading ${file.path}: ${err}`);
                 }
             }
-            // Now generate one summary for the combined content of all files
-            const summaryContent = yield this.generateSummary(combinedContent);
-            // Prepare the full summary
-            const finalSummary = `# Summary of Week ${weekNumber}\n\n${summaryContent}`;
+            // Step 2: Combine the short summaries with links and generate the final detailed review
+            const finalSummary = yield this.generateFinalReview(perDocSummaries, weekNumber);
+            const fullSummary = `${finalSummary}`;
             try {
-                yield this.app.vault.create(outputPath, finalSummary); // Create the summary file
+                yield this.app.vault.create(outputPath, fullSummary);
+                new obsidian.Notice(`Weekly summary for week ${weekNumber} generated successfully!`);
             }
             catch (err) {
                 console.error(`Error writing summary: ${err}`);
+                new obsidian.Notice(`Failed to write weekly summary.`);
             }
         });
     }
-    generateSummary(text) {
-        return __awaiter(this, void 0, void 0, function* () {
-            const chunkSize = Math.floor(this.settings.maxTokens * 0.75); // Adjust the chunk size based on the token limit
-            const textChunks = this.chunkText(text, chunkSize);
-            let combinedSummary = '';
-            try {
-                for (const chunk of textChunks) {
-                    const summary = yield this.fetchOllamaSummary(chunk);
-                    combinedSummary += summary + '\n\n';
-                }
-                return `# Weekly Summary\n\n${combinedSummary}`;
-            }
-            catch (err) {
-                console.error(`Error generating summary: ${err}`);
-                return 'Error summarizing content.';
-            }
-        });
-    }
-    fetchOllamaSummary(text) {
+    // Generate a very short summary (1-2 sentences) per document
+    generateShortSummary(text) {
         var _a;
         return __awaiter(this, void 0, void 0, function* () {
-            const prompt = `Please summarize the following content into exactly two paragraphs:\n\n${text}`;
+            const prompt = `Please summarize the following content in one or two concise sentences:\n\n${text}`;
             try {
                 const response = yield this.ollamaClient.chat({
                     model: this.settings.model,
                     messages: [{ role: 'user', content: prompt }],
-                    stream: false, // Assuming no streaming for now
+                    stream: false,
                 });
-                return ((_a = response.message) === null || _a === void 0 ? void 0 : _a.content) || 'No summary generated.';
+                return ((_a = response.message) === null || _a === void 0 ? void 0 : _a.content.trim()) || 'No summary generated.';
             }
             catch (err) {
-                console.error(`Error connecting to Ollama API: ${err}`);
+                console.error(`Error generating short summary: ${err}`);
                 return 'Error summarizing content.';
             }
         });
     }
-    // Helper function to split large text into smaller chunks
-    chunkText(text, chunkSize) {
-        const chunks = [];
-        for (let i = 0; i < text.length; i += chunkSize) {
-            chunks.push(text.substring(i, i + chunkSize));
-        }
-        return chunks;
+    // Generate the final two-paragraph review with markdown links
+    generateFinalReview(summaries, weekNumber) {
+        var _a;
+        return __awaiter(this, void 0, void 0, function* () {
+            const contentWithLinks = summaries
+                .map(({ content, filePath }) => `- ${content} ([Link to document](${filePath}))`)
+                .join('\n');
+            const prompt = `Based on the following content, write a two-paragraph weekly review for week ${weekNumber}. 
+Focus on what was worked on, what was completed, what still needs attention, and any recurring themes or notable patterns.
+Include relevant links in Markdown format where applicable (links should have this structure [[link]], no escape characters).
+
+Content with links:\n\n${contentWithLinks}`;
+            try {
+                const response = yield this.ollamaClient.chat({
+                    model: this.settings.model,
+                    messages: [{ role: 'user', content: prompt }],
+                    stream: false,
+                });
+                return ((_a = response.message) === null || _a === void 0 ? void 0 : _a.content.trim()) || 'No review generated.';
+            }
+            catch (err) {
+                console.error(`Error generating final review: ${err}`);
+                return 'Error generating review.';
+            }
+        });
     }
     loadSettings() {
         return __awaiter(this, void 0, void 0, function* () {
@@ -1348,7 +1352,7 @@ class WeeklySummarizerSettingTab extends obsidian.PluginSettingTab {
         new obsidian.Setting(containerEl)
             .setName('Output Path Template')
             .setDesc('Template for the output file. Use %WEEK_NUMBER% and %YEAR% as placeholders.')
-            .addText(text => text
+            .addText((text) => text
             .setPlaceholder('Summary of Week %WEEK_NUMBER%.md')
             .setValue(this.plugin.settings.outputPathTemplate)
             .onChange((value) => __awaiter(this, void 0, void 0, function* () {
@@ -1358,7 +1362,7 @@ class WeeklySummarizerSettingTab extends obsidian.PluginSettingTab {
         new obsidian.Setting(containerEl)
             .setName('Output Folder')
             .setDesc('Folder where the summary file will be saved.')
-            .addText(text => text
+            .addText((text) => text
             .setPlaceholder('/')
             .setValue(this.plugin.settings.outputFolder)
             .onChange((value) => __awaiter(this, void 0, void 0, function* () {
@@ -1368,7 +1372,7 @@ class WeeklySummarizerSettingTab extends obsidian.PluginSettingTab {
         new obsidian.Setting(containerEl)
             .setName('Ollama API URL')
             .setDesc('URL for the Ollama API (e.g., http://localhost:11434)')
-            .addText(text => text
+            .addText((text) => text
             .setPlaceholder('http://localhost:11434')
             .setValue(this.plugin.settings.ollamaApiUrl)
             .onChange((value) => __awaiter(this, void 0, void 0, function* () {
@@ -1380,7 +1384,7 @@ class WeeklySummarizerSettingTab extends obsidian.PluginSettingTab {
         new obsidian.Setting(containerEl)
             .setName('Ollama Model')
             .setDesc('Model to be used for summarization (e.g., mistral:latest). You must manually pull the model if it does not already exist.')
-            .addText(text => text
+            .addText((text) => text
             .setPlaceholder('mistral:latest')
             .setValue(this.plugin.settings.model)
             .onChange((value) => __awaiter(this, void 0, void 0, function* () {
@@ -1390,7 +1394,7 @@ class WeeklySummarizerSettingTab extends obsidian.PluginSettingTab {
         new obsidian.Setting(containerEl)
             .setName('Maximum Tokens')
             .setDesc('Maximum number of tokens to use for each summary request.')
-            .addText(text => text
+            .addText((text) => text
             .setPlaceholder('500')
             .setValue(String(this.plugin.settings.maxTokens))
             .onChange((value) => __awaiter(this, void 0, void 0, function* () {

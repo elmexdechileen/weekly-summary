@@ -2,7 +2,7 @@
 import { App, Plugin, PluginSettingTab, Setting, TFile, Notice } from 'obsidian';
 import dayjs from 'dayjs';
 import isoWeek from 'dayjs/plugin/isoWeek';
-import { Ollama } from 'ollama'; // Import Ollama class
+import { Ollama } from 'ollama';
 
 dayjs.extend(isoWeek);
 
@@ -10,27 +10,27 @@ interface WeeklySummarizerSettings {
   outputPathTemplate: string;
   outputFolder: string;
   ollamaApiUrl: string;
-  model: string; // Add a setting for the model
-  maxTokens: number; // Add a setting for maximum tokens
+  model: string;
+  maxTokens: number;
 }
 
 const DEFAULT_SETTINGS: WeeklySummarizerSettings = {
   outputPathTemplate: 'Summary of Week %WEEK_NUMBER%.md',
   outputFolder: '/',
   ollamaApiUrl: 'http://localhost:11434',
-  model: 'mistral:latest', // Default model
-  maxTokens: 500, // Default maximum tokens
+  model: 'mistral:latest',
+  maxTokens: 500,
 };
 
 export default class WeeklySummarizer extends Plugin {
   settings!: WeeklySummarizerSettings;
-  ollamaClient!: Ollama;  // Ollama client instance
+  ollamaClient!: Ollama;
 
   async onload() {
     console.log('Loading Weekly Summarizer Plugin');
     await this.loadSettings();
-    
-    // Initialize Ollama client without baseUrl
+
+    // Initialize Ollama client
     this.ollamaClient = new Ollama();
 
     this.addCommand({
@@ -55,82 +55,84 @@ export default class WeeklySummarizer extends Plugin {
 
     const outputPath = `${this.settings.outputFolder}/${outputFileName}`;
 
-    // Check if the summary file already exists
+    // Check if summary file exists
     const existingFile = this.app.vault.getAbstractFileByPath(outputPath);
     if (existingFile instanceof TFile) {
       new Notice(`Weekly summary for week ${weekNumber} already exists. No action taken.`);
-      return; // Exit the function if the file already exists
+      return;
     }
 
     const markdownFiles = this.app.vault.getMarkdownFiles();
-    
-    // Combine all the content of the markdown files
-    let combinedContent = '';
+
+    // Step 1: Summarize each document individually (1-2 sentences)
+    const perDocSummaries: { content: string; filePath: string }[] = [];
 
     for (const file of markdownFiles) {
       try {
         const content = await this.app.vault.read(file);
-        combinedContent += content + '\n\n'; // Add each file's content to the combined content
+
+        // Generate a short summary for this document
+        const shortSummary = await this.generateShortSummary(content);
+        perDocSummaries.push({ content: shortSummary, filePath: file.path });
       } catch (err) {
         console.error(`Error reading ${file.path}: ${err}`);
       }
     }
 
-    // Now generate one summary for the combined content of all files
-    const summaryContent = await this.generateSummary(combinedContent);
+    // Step 2: Combine the short summaries with links and generate the final detailed review
+    const finalSummary = await this.generateFinalReview(perDocSummaries, weekNumber);
 
-    // Prepare the full summary
-    const finalSummary = `# Summary of Week ${weekNumber}\n\n${summaryContent}`;
+    const fullSummary = `${finalSummary}`;
 
     try {
-      await this.app.vault.create(outputPath, finalSummary);  // Create the summary file
+      await this.app.vault.create(outputPath, fullSummary);
+      new Notice(`Weekly summary for week ${weekNumber} generated successfully!`);
     } catch (err) {
       console.error(`Error writing summary: ${err}`);
+      new Notice(`Failed to write weekly summary.`);
     }
   }
 
-  async generateSummary(text: string): Promise<string> {
-    const chunkSize = Math.floor(this.settings.maxTokens * 0.75); // Adjust the chunk size based on the token limit
-    const textChunks = this.chunkText(text, chunkSize);
-    let combinedSummary = '';
-
-    try {
-      for (const chunk of textChunks) {
-        const summary = await this.fetchOllamaSummary(chunk);
-        combinedSummary += summary + '\n\n';
-      }
-
-      return `# Weekly Summary\n\n${combinedSummary}`;
-    } catch (err) {
-      console.error(`Error generating summary: ${err}`);
-      return 'Error summarizing content.';
-    }
-  }
-
-  async fetchOllamaSummary(text: string): Promise<string> {
-    const prompt = `Please summarize the following content into exactly two paragraphs:\n\n${text}`;
+  // Generate a very short summary (1-2 sentences) per document
+  async generateShortSummary(text: string): Promise<string> {
+    const prompt = `Please summarize the following content in one or two concise sentences:\n\n${text}`;
 
     try {
       const response = await this.ollamaClient.chat({
-        model: this.settings.model,  // Use the model from settings
+        model: this.settings.model,
         messages: [{ role: 'user', content: prompt }],
-        stream: false, // Assuming no streaming for now
+        stream: false,
       });
-
-      return response.message?.content || 'No summary generated.';
+      return response.message?.content.trim() || 'No summary generated.';
     } catch (err) {
-      console.error(`Error connecting to Ollama API: ${err}`);
+      console.error(`Error generating short summary: ${err}`);
       return 'Error summarizing content.';
     }
   }
 
-  // Helper function to split large text into smaller chunks
-  chunkText(text: string, chunkSize: number): string[] {
-    const chunks = [];
-    for (let i = 0; i < text.length; i += chunkSize) {
-      chunks.push(text.substring(i, i + chunkSize));
+  // Generate the final two-paragraph review with markdown links
+  async generateFinalReview(summaries: { content: string; filePath: string }[], weekNumber: number): Promise<string> {
+    const contentWithLinks = summaries
+      .map(({ content, filePath }) => `- ${content} ([Link to document](${filePath}))`)
+      .join('\n');
+
+    const prompt = `Based on the following content, write a two-paragraph weekly review for week ${weekNumber}. 
+Focus on what was worked on, what was completed, what still needs attention, and any recurring themes or notable patterns.
+Include relevant links in Markdown format where applicable (links should have this structure [[link]], no escape characters).
+
+Content with links:\n\n${contentWithLinks}`;
+
+    try {
+      const response = await this.ollamaClient.chat({
+        model: this.settings.model,
+        messages: [{ role: 'user', content: prompt }],
+        stream: false,
+      });
+      return response.message?.content.trim() || 'No review generated.';
+    } catch (err) {
+      console.error(`Error generating final review: ${err}`);
+      return 'Error generating review.';
     }
-    return chunks;
   }
 
   async loadSettings() {
@@ -159,33 +161,33 @@ class WeeklySummarizerSettingTab extends PluginSettingTab {
     new Setting(containerEl)
       .setName('Output Path Template')
       .setDesc('Template for the output file. Use %WEEK_NUMBER% and %YEAR% as placeholders.')
-      .addText(text =>
+      .addText((text) =>
         text
           .setPlaceholder('Summary of Week %WEEK_NUMBER%.md')
           .setValue(this.plugin.settings.outputPathTemplate)
           .onChange(async (value) => {
             this.plugin.settings.outputPathTemplate = value;
             await this.plugin.saveSettings();
-          })
+          }),
       );
 
     new Setting(containerEl)
       .setName('Output Folder')
       .setDesc('Folder where the summary file will be saved.')
-      .addText(text =>
+      .addText((text) =>
         text
           .setPlaceholder('/')
           .setValue(this.plugin.settings.outputFolder)
           .onChange(async (value) => {
             this.plugin.settings.outputFolder = value;
             await this.plugin.saveSettings();
-          })
+          }),
       );
 
     new Setting(containerEl)
       .setName('Ollama API URL')
       .setDesc('URL for the Ollama API (e.g., http://localhost:11434)')
-      .addText(text =>
+      .addText((text) =>
         text
           .setPlaceholder('http://localhost:11434')
           .setValue(this.plugin.settings.ollamaApiUrl)
@@ -194,33 +196,33 @@ class WeeklySummarizerSettingTab extends PluginSettingTab {
             await this.plugin.saveSettings();
             // Reinitialize Ollama client with new API URL
             this.plugin.ollamaClient = new Ollama();
-          })
+          }),
       );
 
     new Setting(containerEl)
       .setName('Ollama Model')
       .setDesc('Model to be used for summarization (e.g., mistral:latest). You must manually pull the model if it does not already exist.')
-      .addText(text =>
+      .addText((text) =>
         text
           .setPlaceholder('mistral:latest')
           .setValue(this.plugin.settings.model)
           .onChange(async (value) => {
             this.plugin.settings.model = value;
             await this.plugin.saveSettings();
-          })
+          }),
       );
 
     new Setting(containerEl)
       .setName('Maximum Tokens')
       .setDesc('Maximum number of tokens to use for each summary request.')
-      .addText(text =>
+      .addText((text) =>
         text
           .setPlaceholder('500')
           .setValue(String(this.plugin.settings.maxTokens))
           .onChange(async (value) => {
             this.plugin.settings.maxTokens = parseInt(value, 10);
             await this.plugin.saveSettings();
-          })
-    );
+          }),
+      );
   }
 }
