@@ -1,6 +1,7 @@
 {
   "name": "weekly-summarizer",
   "version": "1.0.0",
+  "type": "module",
   "main": "main.js",
   "scripts": {
     "build": "rollup -c && cpx build/* ./build/",
@@ -8,6 +9,8 @@
   },
   "devDependencies": {
     "@rollup/plugin-terser": "^0.4.4",
+    "@typescript-eslint/eslint-plugin": "^8.32.1",
+    "@typescript-eslint/parser": "^8.32.1",
     "cpx": "^1.5.0",
     "rollup": "^3.20.0",
     "rollup-plugin-typescript2": "^0.31.1",

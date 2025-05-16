@@ -4,5 +4,6 @@
   "version": "1.0.0",
   "author": "Max van Rooijen",
   "description": "A plugin to summarize weekly changes in markdown documents.",
-  "minAppVersion": "0.12.0"
+  "minAppVersion": "0.12.0",
+  "fundingUrl": "https://buymeacoffee.com/elmex"
 }
