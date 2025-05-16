@@ -1,9 +1,10 @@
 {
   "id": "weekly-summarizer",
   "name": "Weekly Summarizer",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "author": "Max van Rooijen",
   "description": "A plugin to summarize weekly changes in markdown documents.",
   "minAppVersion": "0.12.0",
-  "fundingUrl": "https://buymeacoffee.com/elmex"
+  "fundingUrl": "https://buymeacoffee.com/elmex",
+  "isDesktopOnly": false
 }
