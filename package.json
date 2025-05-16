@@ -4,7 +4,7 @@
   "type": "module",
   "main": "main.js",
   "scripts": {
-    "build": "rollup -c && cpx build/* ./build/",
+    "build": "rollup -c",
     "deploy": "cpx build/* C:/Vault/vault/.obsidian/plugins/weekly-summarizer/"
   },
   "devDependencies": {
