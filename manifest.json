@@ -4,6 +4,5 @@
   "version": "1.0.0",
   "author": "Max van Rooijen",
   "description": "A plugin to summarize weekly changes in markdown documents.",
-  "main": "dist/main.js", 
   "minAppVersion": "0.12.0"
 }
